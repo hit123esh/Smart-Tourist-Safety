@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Logo from '@/components/Logo';
 import TouristIdCard from '@/components/TouristIdCard';
+import SafetyHeatMap from '@/components/SafetyHeatMap';
 import { useAuth } from '@/contexts/AuthContext';
 
 const TouristDashboard = () => {
@@ -144,7 +145,10 @@ const TouristDashboard = () => {
             </div>
           </div>
 
-          {/* Profile Info */}
+          {/* Safety Heat Map */}
+          <div className="animate-slide-up" style={{ animationDelay: '0.25s' }}>
+            <SafetyHeatMap height="400px" />
+          </div>
           {touristProfile && (
             <div className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
               <Card>

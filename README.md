@@ -100,6 +100,59 @@ CREATE POLICY "Anyone can check email"
   USING (true);
 ```
 
+## Google Maps Integration
+
+The application includes an interactive safety heat map for visualizing tourist safety zones in Bangalore.
+
+### Features
+- **Color-coded markers**: Green (Safe), Yellow (Caution), Red (Unsafe)
+- **Heat map layer**: Visual intensity overlay showing risk levels
+- **Interactive InfoWindows**: Click markers for location details and safety status
+- **Responsive design**: Works on both desktop and mobile
+
+### Configuration
+
+The map configuration is located in `src/config/maps.ts`:
+
+```typescript
+// API Key (publishable - security via Google Cloud Console restrictions)
+export const GOOGLE_MAPS_API_KEY = 'your-api-key';
+
+// Default center (Bangalore)
+export const DEFAULT_MAP_CENTER = { lat: 12.9716, lng: 77.5946 };
+
+// Safety locations array
+export const SAFETY_LOCATIONS: SafetyLocation[] = [
+  {
+    id: 'unique-id',
+    name: 'Location Name',
+    position: { lat: 12.9507, lng: 77.5848 },
+    safetyLevel: 'safe' | 'caution' | 'unsafe',
+    description: 'Optional description',
+  },
+  // ... more locations
+];
+```
+
+### Adding/Removing Locations
+
+1. Open `src/config/maps.ts`
+2. Add new entries to the `SAFETY_LOCATIONS` array
+3. Each location requires: `id`, `name`, `position`, and `safetyLevel`
+4. The heat map automatically updates based on the locations
+
+### API Key Security
+
+The Google Maps API key is a **publishable key** meant for browser use. Secure it via:
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Restrict the key to your domain(s)
+3. Limit APIs to Maps JavaScript API only
+
+### Important Note
+
+⚠️ **Demo Data**: Unsafe and caution zones shown are **simulated** for demonstration purposes. 
+Real safety data should be integrated from anomaly detection and incident reporting systems.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
