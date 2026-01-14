@@ -1,15 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase configuration
-// TODO: Replace these with your actual Supabase credentials
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    'Supabase credentials not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment.'
-  );
-}
+const supabaseUrl = 'https://ropxtdpabpjirdvrzydn.supabase.co';
+const supabaseAnonKey = 'sb_publishable_lac4DZhhyfqjUHZsi3i8qg_W8TaBJcn';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
