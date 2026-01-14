@@ -135,7 +135,7 @@ ${context}
         "X-Title": "Safe Haven RAG Bot",
       },
       body: JSON.stringify({
-        model: "allenai/molmo-2-8b:free",
+        model: "meta-llama/llama-3.2-3b-instruct:free",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: message },
