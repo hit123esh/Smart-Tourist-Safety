@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Logo from '@/components/Logo';
 import TouristIdCard from '@/components/TouristIdCard';
 import SafetyHeatMap from '@/components/SafetyHeatMap';
+import SafeHavenChatbot from '@/components/SafeHavenChatbot';
 import { useAuth } from '@/contexts/AuthContext';
 
 const TouristDashboard = () => {
@@ -194,6 +195,9 @@ const TouristDashboard = () => {
           )}
         </div>
       </main>
+
+      {/* RAG-Lite Chatbot */}
+      <SafeHavenChatbot />
     </div>
   );
 };
