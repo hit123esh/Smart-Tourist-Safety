@@ -19,8 +19,6 @@ const SignUp = () => {
     email: '',
     phone: '',
     emergencyContact: '',
-    password: '',
-    confirmPassword: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -33,19 +31,10 @@ const SignUp = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (formData.password !== formData.confirmPassword) {
+    if (!formData.name.trim() || !formData.email.trim()) {
       toast({
-        title: 'Passwords do not match',
-        description: 'Please ensure both passwords are identical.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      toast({
-        title: 'Password too short',
-        description: 'Password must be at least 6 characters.',
+        title: 'Required fields missing',
+        description: 'Please provide your name and email.',
         variant: 'destructive',
       });
       return;
@@ -53,7 +42,7 @@ const SignUp = () => {
 
     setIsLoading(true);
 
-    const { error } = await signUp(formData.email, formData.password, {
+    const { error } = await signUp(formData.email, {
       name: formData.name,
       phone: formData.phone,
       emergencyContact: formData.emergencyContact || undefined,
@@ -71,7 +60,7 @@ const SignUp = () => {
 
     toast({
       title: 'Account Created!',
-      description: 'Please check your email to verify your account, then sign in.',
+      description: 'You can now sign in with your email.',
     });
     
     setIsLoading(false);
@@ -151,7 +140,6 @@ const SignUp = () => {
                     value={formData.phone}
                     onChange={handleChange}
                     className="pl-10"
-                    required
                   />
                 </div>
               </div>
@@ -170,34 +158,6 @@ const SignUp = () => {
                     className="pl-10"
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                  minLength={6}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  placeholder="••••••••"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                  minLength={6}
-                />
               </div>
 
               <Button

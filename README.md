@@ -1,4 +1,26 @@
-# Welcome to your Lovable project
+# Smart Tourism Safety System
+
+## ⚠️ Authentication Notice
+
+**This project uses a simplified authentication flow for development purposes.**
+
+### Current Authentication:
+- **Tourist Sign-up/Sign-in**: Email-only lookup (no password required for tourists)
+- **Police Portal**: Uses Supabase Auth with password authentication
+
+### What this means:
+- Tourist authentication checks if the email exists in the `tourists` table
+- No email verification is performed
+- Session state is managed client-side for tourists
+- This is **NOT production-grade authentication**
+
+### To enable proper authentication later:
+1. Re-enable Supabase Auth email/password for tourists
+2. Add email verification flow
+3. Implement proper session management with JWTs
+4. Add password reset functionality
+
+---
 
 ## Project info
 
@@ -36,20 +58,6 @@ npm i
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
 ## What technologies are used for this project?
 
 This project is built with:
@@ -59,15 +67,39 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- Supabase (PostgreSQL + Auth for police only)
+
+## Database Schema
+
+The `tourists` table now stores user data directly without requiring Supabase Auth for tourist users:
+
+```sql
+-- Tourists table (no user_id foreign key for simplified auth)
+CREATE TABLE public.tourists (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tourist_id TEXT UNIQUE NOT NULL,
+  full_name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  phone TEXT,
+  emergency_contact TEXT,
+  status TEXT DEFAULT 'safe',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.tourists ENABLE ROW LEVEL SECURITY;
+
+-- Allow public insert for registration
+CREATE POLICY "Anyone can register"
+  ON public.tourists FOR INSERT
+  WITH CHECK (true);
+
+-- Allow public select for login check
+CREATE POLICY "Anyone can check email"
+  ON public.tourists FOR SELECT
+  USING (true);
+```
 
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)

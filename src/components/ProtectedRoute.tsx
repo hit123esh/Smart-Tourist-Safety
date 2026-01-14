@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
-  const { user, userRole, loading } = useAuth();
+  const { isAuthenticated, userRole, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -24,7 +24,7 @@ const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     // Redirect to appropriate login page
     if (location.pathname.startsWith('/police')) {
       return <Navigate to="/police/login" state={{ from: location }} replace />;

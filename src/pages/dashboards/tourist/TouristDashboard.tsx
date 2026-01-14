@@ -10,8 +10,8 @@ const TouristDashboard = () => {
   const navigate = useNavigate();
   const { touristProfile, signOut, loading } = useAuth();
 
-  const handleLogout = async () => {
-    await signOut();
+  const handleLogout = () => {
+    signOut();
     navigate('/');
   };
 
