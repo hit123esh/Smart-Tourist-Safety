@@ -153,6 +153,78 @@ The Google Maps API key is a **publishable key** meant for browser use. Secure i
 ⚠️ **Demo Data**: Unsafe and caution zones shown are **simulated** for demonstration purposes. 
 Real safety data should be integrated from anomaly detection and incident reporting systems.
 
+---
+
+## RAG-Lite Chatbot
+
+The Tourist Dashboard includes a platform-restricted AI chatbot using **RAG-Lite** (Retrieval-Augmented Generation - Lite) architecture.
+
+### What is RAG-Lite?
+
+RAG-Lite is a simplified approach to domain-restricted AI:
+- The chatbot does **NOT** use the LLM's general knowledge
+- It retrieves only **pre-approved, curated content** from a Supabase table
+- Retrieved content is injected into the prompt as authoritative context
+- The LLM answers **strictly from that context**
+- If no relevant content is found, the chatbot politely refuses
+
+**Why RAG-Lite instead of fine-tuning?**
+- No model training required
+- Knowledge can be updated instantly via database
+- Complete control over what the chatbot can discuss
+- More cost-effective and maintainable
+
+### Chatbot Capabilities
+
+The chatbot can answer questions about:
+- ✅ Bangalore tourist places (Lalbagh, Cubbon Park, Bangalore Palace, etc.)
+- ✅ Restaurants and food recommendations
+- ✅ Safe Haven platform features (heat map, zones, Tourist ID)
+- ✅ Safety zones (green/yellow/red) explanation
+- ✅ Emergency procedures
+
+The chatbot will **refuse** to answer:
+- ❌ Programming/coding questions
+- ❌ General knowledge
+- ❌ Politics, health advice, legal matters
+- ❌ Topics unrelated to Bangalore tourism
+
+### Knowledge Storage
+
+Knowledge is stored in the `chat_knowledge` Supabase table:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| category | TEXT | `tourist_place`, `restaurant`, `platform_info`, `safety`, `emergency` |
+| title | TEXT | Knowledge entry title |
+| content | TEXT | The authoritative content for responses |
+| tags | TEXT[] | Optional keywords for retrieval |
+| city | TEXT | Always "Bangalore" |
+
+### Adding/Updating Knowledge
+
+1. Open Supabase Dashboard → SQL Editor
+2. Insert new knowledge entries:
+
+```sql
+INSERT INTO public.chat_knowledge (category, title, content, tags)
+VALUES (
+  'tourist_place',
+  'ISKCON Temple',
+  'ISKCON Temple Bangalore is a famous spiritual destination...',
+  ARRAY['temple', 'spiritual', 'religion']
+);
+```
+
+### Limitations
+
+- Knowledge is static (requires manual database updates)
+- No semantic search (uses category/keyword matching)
+- Session history is not persisted (resets on page refresh)
+- Future enhancement: Add embeddings for semantic search
+
+---
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
