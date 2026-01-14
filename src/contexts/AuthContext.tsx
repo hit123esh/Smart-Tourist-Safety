@@ -1,12 +1,10 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
+import { createContext, useContext, useState, ReactNode } from 'react';
 import { supabase } from '@/services/supabaseClient';
 
 type AppRole = 'admin' | 'police' | 'tourist';
 
 interface TouristProfile {
   id: string;
-  user_id: string;
   tourist_id: string;
   full_name: string;
   email: string;
@@ -17,15 +15,16 @@ interface TouristProfile {
 }
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
   touristProfile: TouristProfile | null;
   userRole: AppRole | null;
+  isAuthenticated: boolean;
   loading: boolean;
-  signUp: (email: string, password: string, metadata: { name: string; phone: string; emergencyContact?: string }) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  signUp: (email: string, metadata: { name: string; phone: string; emergencyContact?: string }) => Promise<{ error: Error | null }>;
+  signIn: (email: string) => Promise<{ error: Error | null; profile?: TouristProfile }>;
+  signInPolice: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signOut: () => void;
+  setTouristProfile: (profile: TouristProfile | null) => void;
+  setUserRole: (role: AppRole | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,180 +49,150 @@ const generateTouristId = (): string => {
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [touristProfile, setTouristProfile] = useState<TouristProfile | null>(null);
   const [userRole, setUserRole] = useState<AppRole | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchTouristProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('tourists')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error fetching tourist profile:', error);
-      return null;
-    }
-    return data;
-  };
-
-  const fetchUserRole = async (userId: string): Promise<AppRole | null> => {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error fetching user role:', error);
-      return null;
-    }
-    return data?.role || null;
-  };
-
-  const refreshProfile = async () => {
-    if (user) {
-      const profile = await fetchTouristProfile(user.id);
-      setTouristProfile(profile);
-      const role = await fetchUserRole(user.id);
-      setUserRole(role);
-    }
-  };
-
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          // Defer profile fetching to avoid blocking auth state
-          setTimeout(async () => {
-            const profile = await fetchTouristProfile(session.user.id);
-            setTouristProfile(profile);
-            const role = await fetchUserRole(session.user.id);
-            setUserRole(role);
-          }, 0);
-        } else {
-          setTouristProfile(null);
-          setUserRole(null);
-        }
-        setLoading(false);
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        fetchTouristProfile(session.user.id).then(setTouristProfile);
-        fetchUserRole(session.user.id).then(setUserRole);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const signUp = async (
     email: string,
-    password: string,
     metadata: { name: string; phone: string; emergencyContact?: string }
   ) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin,
-          data: {
-            full_name: metadata.name,
-          },
-        },
-      });
+      setLoading(true);
+      
+      // Check if email already exists
+      const { data: existingUser } = await supabase
+        .from('tourists')
+        .select('email')
+        .eq('email', email.toLowerCase().trim())
+        .maybeSingle();
 
-      if (error) throw error;
+      if (existingUser) {
+        throw new Error('An account with this email already exists. Please sign in instead.');
+      }
 
-      // If user is created, create the tourist profile
-      if (data.user) {
-        const touristId = generateTouristId();
-        
-        const { error: profileError } = await supabase
-          .from('tourists')
-          .insert({
-            user_id: data.user.id,
-            tourist_id: touristId,
-            full_name: metadata.name,
-            email: email,
-            phone: metadata.phone || null,
-            emergency_contact: metadata.emergencyContact || null,
-            status: 'safe',
-          });
+      const touristId = generateTouristId();
+      
+      // Create tourist profile directly (no Supabase Auth)
+      const { data, error: profileError } = await supabase
+        .from('tourists')
+        .insert({
+          tourist_id: touristId,
+          full_name: metadata.name.trim(),
+          email: email.toLowerCase().trim(),
+          phone: metadata.phone || null,
+          emergency_contact: metadata.emergencyContact || null,
+          status: 'safe',
+        })
+        .select()
+        .single();
 
-        if (profileError) {
-          console.error('Error creating tourist profile:', profileError);
-          throw profileError;
-        }
-
-        // Assign tourist role
-        const { error: roleError } = await supabase
-          .from('user_roles')
-          .insert({
-            user_id: data.user.id,
-            role: 'tourist',
-          });
-
-        if (roleError) {
-          console.error('Error assigning tourist role:', roleError);
-        }
+      if (profileError) {
+        console.error('Error creating tourist profile:', profileError);
+        throw profileError;
       }
 
       return { error: null };
     } catch (error) {
       return { error: error as Error };
+    } finally {
+      setLoading(false);
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      setLoading(true);
+      
+      // Check if email exists in tourists table
+      const { data: profile, error } = await supabase
+        .from('tourists')
+        .select('*')
+        .eq('email', email.toLowerCase().trim())
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!profile) {
+        throw new Error('User not registered. Please sign up first.');
+      }
+
+      // Set session state
+      setTouristProfile(profile);
+      setUserRole('tourist');
+      setIsAuthenticated(true);
+
+      return { error: null, profile };
+    } catch (error) {
+      return { error: error as Error };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInPolice = async (email: string, password: string) => {
+    try {
+      setLoading(true);
+      
+      // Police still uses Supabase Auth for security
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
+
+      if (data.user) {
+        // Verify police/admin role
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+
+        if (!roleData || (roleData.role !== 'police' && roleData.role !== 'admin')) {
+          await supabase.auth.signOut();
+          throw new Error('You are not authorized to access the police portal.');
+        }
+
+        setUserRole(roleData.role as AppRole);
+        setIsAuthenticated(true);
+      }
+
       return { error: null };
     } catch (error) {
       return { error: error as Error };
+    } finally {
+      setLoading(false);
     }
   };
 
   const signOut = async () => {
+    // Sign out from Supabase Auth if police user
     await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
+    
+    // Clear client-side session
     setTouristProfile(null);
     setUserRole(null);
+    setIsAuthenticated(false);
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
-        session,
         touristProfile,
         userRole,
+        isAuthenticated,
         loading,
         signUp,
         signIn,
+        signInPolice,
         signOut,
-        refreshProfile,
+        setTouristProfile,
+        setUserRole,
       }}
     >
       {children}

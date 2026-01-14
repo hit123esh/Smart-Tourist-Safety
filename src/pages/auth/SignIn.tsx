@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { LogIn, Mail, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,36 +12,31 @@ import { useAuth } from '@/contexts/AuthContext';
 const SignIn = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { signIn, user, userRole, loading } = useAuth();
+  const { signIn, isAuthenticated } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
+  const [email, setEmail] = useState('');
 
-  // Redirect if already logged in
-  useEffect(() => {
-    if (!loading && user) {
-      if (userRole === 'police' || userRole === 'admin') {
-        navigate('/police/dashboard');
-      } else {
-        navigate('/dashboard');
-      }
-    }
-  }, [user, userRole, loading, navigate]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
-  };
+  // Redirect if already authenticated
+  if (isAuthenticated) {
+    navigate('/dashboard');
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!email.trim()) {
+      toast({
+        title: 'Email required',
+        description: 'Please enter your email address.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
 
-    const { error } = await signIn(formData.email, formData.password);
+    const { error } = await signIn(email);
 
     if (error) {
       toast({
@@ -58,7 +53,8 @@ const SignIn = () => {
       description: 'You have successfully signed in.',
     });
     
-    // Navigation will happen via useEffect when user state updates
+    setIsLoading(false);
+    navigate('/dashboard');
   };
 
   return (
@@ -83,7 +79,7 @@ const SignIn = () => {
             </div>
             <CardTitle className="font-display text-2xl">Welcome Back</CardTitle>
             <CardDescription>
-              Sign in to access your tourist dashboard
+              Sign in with your email to access your dashboard
             </CardDescription>
           </CardHeader>
           
@@ -98,27 +94,12 @@ const SignIn = () => {
                     name="email"
                     type="email"
                     placeholder="john@example.com"
-                    value={formData.email}
-                    onChange={handleChange}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="pl-10"
                     required
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
-                </div>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                />
               </div>
 
               <Button
@@ -148,6 +129,12 @@ const SignIn = () => {
                 Register Now
               </Link>
             </p>
+
+            <div className="mt-4 p-3 rounded-lg bg-muted">
+              <p className="text-xs text-muted-foreground text-center">
+                This is a simplified authentication for development purposes.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </main>
