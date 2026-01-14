@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { LogOut, Users, Search, Filter, RefreshCw, Shield, ChevronDown } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { LogOut, Users, Search, Filter, RefreshCw, Shield, ChevronDown, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,66 +20,55 @@ import {
 } from '@/components/ui/dropdown-menu';
 import Logo from '@/components/Logo';
 import StatusBadge from '@/components/StatusBadge';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/services/supabaseClient';
 
-// Mock data - will be replaced with Supabase data
-const mockTourists = [
-  {
-    id: 'TST-2024-A7F3K9',
-    name: 'John Doe',
-    email: 'john@example.com',
-    phone: '+1 234 567 8900',
-    status: 'safe' as const,
-    createdAt: '2024-01-15T10:30:00Z',
-  },
-  {
-    id: 'TST-2024-B8G4L0',
-    name: 'Jane Smith',
-    email: 'jane@example.com',
-    phone: '+1 234 567 8901',
-    status: 'observation' as const,
-    createdAt: '2024-01-14T14:22:00Z',
-  },
-  {
-    id: 'TST-2024-C9H5M1',
-    name: 'Robert Johnson',
-    email: 'robert@example.com',
-    phone: '+1 234 567 8902',
-    status: 'safe' as const,
-    createdAt: '2024-01-13T09:15:00Z',
-  },
-  {
-    id: 'TST-2024-D0I6N2',
-    name: 'Emily Brown',
-    email: 'emily@example.com',
-    phone: '+1 234 567 8903',
-    status: 'safe' as const,
-    createdAt: '2024-01-12T16:45:00Z',
-  },
-  {
-    id: 'TST-2024-E1J7O3',
-    name: 'Michael Wilson',
-    email: 'michael@example.com',
-    phone: '+1 234 567 8904',
-    status: 'observation' as const,
-    createdAt: '2024-01-11T11:30:00Z',
-  },
-];
+interface Tourist {
+  id: string;
+  tourist_id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  status: 'safe' | 'observation' | 'alert';
+  created_at: string;
+}
 
 const PoliceDashboard = () => {
   const navigate = useNavigate();
-  const [tourists] = useState(mockTourists);
+  const { signOut, loading: authLoading } = useAuth();
+  const [tourists, setTourists] = useState<Tourist[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const handleLogout = () => {
-    // TODO: Implement Supabase logout
+  const fetchTourists = async () => {
+    setIsLoading(true);
+    const { data, error } = await supabase
+      .from('tourists')
+      .select('id, tourist_id, full_name, email, phone, status, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching tourists:', error);
+    } else {
+      setTourists(data || []);
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchTourists();
+  }, []);
+
+  const handleLogout = async () => {
+    await signOut();
     navigate('/');
   };
 
   const filteredTourists = tourists.filter((tourist) => {
     const matchesSearch =
-      tourist.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tourist.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tourist.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tourist.tourist_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tourist.email.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || tourist.status === statusFilter;
@@ -91,8 +80,19 @@ const PoliceDashboard = () => {
     total: tourists.length,
     safe: tourists.filter((t) => t.status === 'safe').length,
     observation: tourists.filter((t) => t.status === 'observation').length,
-    alert: 0, // Placeholder for future alert status
+    alert: tourists.filter((t) => t.status === 'alert').length,
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -132,8 +132,8 @@ const PoliceDashboard = () => {
                 Monitor and manage all registered tourists in the system.
               </p>
             </div>
-            <Button variant="outline" className="gap-2 w-fit">
-              <RefreshCw size={18} />
+            <Button variant="outline" className="gap-2 w-fit" onClick={fetchTourists} disabled={isLoading}>
+              <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
               Refresh Data
             </Button>
           </div>
@@ -244,57 +244,67 @@ const PoliceDashboard = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="font-semibold">Tourist ID</TableHead>
-                      <TableHead className="font-semibold">Name</TableHead>
-                      <TableHead className="font-semibold hidden md:table-cell">Email</TableHead>
-                      <TableHead className="font-semibold hidden lg:table-cell">Phone</TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold hidden sm:table-cell">Registered</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTourists.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          No tourists found matching your criteria.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredTourists.map((tourist) => (
-                        <TableRow key={tourist.id} className="hover:bg-muted/30">
-                          <TableCell className="font-mono text-sm font-medium">
-                            {tourist.id}
-                          </TableCell>
-                          <TableCell className="font-medium">{tourist.name}</TableCell>
-                          <TableCell className="hidden md:table-cell text-muted-foreground">
-                            {tourist.email}
-                          </TableCell>
-                          <TableCell className="hidden lg:table-cell text-muted-foreground">
-                            {tourist.phone}
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge status={tourist.status} size="sm" />
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell text-muted-foreground">
-                            {new Date(tourist.createdAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })}
-                          </TableCell>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-lg border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="font-semibold">Tourist ID</TableHead>
+                          <TableHead className="font-semibold">Name</TableHead>
+                          <TableHead className="font-semibold hidden md:table-cell">Email</TableHead>
+                          <TableHead className="font-semibold hidden lg:table-cell">Phone</TableHead>
+                          <TableHead className="font-semibold">Status</TableHead>
+                          <TableHead className="font-semibold hidden sm:table-cell">Registered</TableHead>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="mt-4 text-sm text-muted-foreground">
-                Showing {filteredTourists.length} of {tourists.length} tourists
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTourists.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                              {tourists.length === 0 
+                                ? 'No tourists registered yet.'
+                                : 'No tourists found matching your criteria.'}
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          filteredTourists.map((tourist) => (
+                            <TableRow key={tourist.id} className="hover:bg-muted/30">
+                              <TableCell className="font-mono text-sm font-medium">
+                                {tourist.tourist_id}
+                              </TableCell>
+                              <TableCell className="font-medium">{tourist.full_name}</TableCell>
+                              <TableCell className="hidden md:table-cell text-muted-foreground">
+                                {tourist.email}
+                              </TableCell>
+                              <TableCell className="hidden lg:table-cell text-muted-foreground">
+                                {tourist.phone || '-'}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge status={tourist.status} size="sm" />
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell text-muted-foreground">
+                                {new Date(tourist.created_at).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="mt-4 text-sm text-muted-foreground">
+                    Showing {filteredTourists.length} of {tourists.length} tourists
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

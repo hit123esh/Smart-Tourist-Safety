@@ -7,10 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Logo from '@/components/Logo';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 const SignUp = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { signUp } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -40,18 +42,40 @@ const SignUp = () => {
       return;
     }
 
+    if (formData.password.length < 6) {
+      toast({
+        title: 'Password too short',
+        description: 'Password must be at least 6 characters.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
 
-    // TODO: Implement Supabase signup once credentials are provided
-    // For now, show a message about missing configuration
-    setTimeout(() => {
+    const { error } = await signUp(formData.email, formData.password, {
+      name: formData.name,
+      phone: formData.phone,
+      emergencyContact: formData.emergencyContact || undefined,
+    });
+
+    if (error) {
       toast({
-        title: 'Supabase Not Configured',
-        description: 'Please provide your Supabase credentials to enable authentication.',
+        title: 'Registration Failed',
+        description: error.message,
         variant: 'destructive',
       });
       setIsLoading(false);
-    }, 1000);
+      return;
+    }
+
+    toast({
+      title: 'Account Created!',
+      description: 'Please check your email to verify your account, then sign in.',
+    });
+    
+    setIsLoading(false);
+    navigate('/signin');
   };
 
   return (

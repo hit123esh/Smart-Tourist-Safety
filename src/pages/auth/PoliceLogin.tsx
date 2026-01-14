@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Shield, Mail, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,15 +7,25 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Logo from '@/components/Logo';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/services/supabaseClient';
 
 const PoliceLogin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { signIn, user, userRole, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
+
+  // Redirect if already logged in with police/admin role
+  useEffect(() => {
+    if (!loading && user && (userRole === 'police' || userRole === 'admin')) {
+      navigate('/police/dashboard');
+    }
+  }, [user, userRole, loading, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
@@ -28,15 +38,46 @@ const PoliceLogin = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // TODO: Implement Supabase signin with role verification once credentials are provided
-    setTimeout(() => {
+    const { error } = await signIn(formData.email, formData.password);
+
+    if (error) {
       toast({
-        title: 'Supabase Not Configured',
-        description: 'Please provide your Supabase credentials to enable authentication.',
+        title: 'Authentication Failed',
+        description: error.message,
         variant: 'destructive',
       });
       setIsLoading(false);
-    }, 1000);
+      return;
+    }
+
+    // After successful sign in, verify the user has police/admin role
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    
+    if (currentUser) {
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+
+      if (!roleData || (roleData.role !== 'police' && roleData.role !== 'admin')) {
+        await supabase.auth.signOut();
+        toast({
+          title: 'Access Denied',
+          description: 'You are not authorized to access the police portal.',
+          variant: 'destructive',
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      toast({
+        title: 'Welcome, Officer',
+        description: 'You have successfully authenticated.',
+      });
+      
+      navigate('/police/dashboard');
+    }
   };
 
   return (

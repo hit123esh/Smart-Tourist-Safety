@@ -1,31 +1,30 @@
-import { useState } from 'react';
-import { LogOut, MapPin, Bell, Phone, Settings, User } from 'lucide-react';
+import { LogOut, MapPin, Bell, Phone, Settings, User, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Logo from '@/components/Logo';
 import TouristIdCard from '@/components/TouristIdCard';
-import StatusBadge from '@/components/StatusBadge';
-
-// Mock data - will be replaced with Supabase data
-const mockUser = {
-  id: 'TST-2024-A7F3K9',
-  name: 'John Doe',
-  email: 'john@example.com',
-  phone: '+1 234 567 8900',
-  emergencyContact: '+1 234 567 8901',
-  status: 'safe' as const,
-  registeredAt: '2024-01-15T10:30:00Z',
-};
+import { useAuth } from '@/contexts/AuthContext';
 
 const TouristDashboard = () => {
   const navigate = useNavigate();
-  const [user] = useState(mockUser);
+  const { touristProfile, signOut, loading } = useAuth();
 
-  const handleLogout = () => {
-    // TODO: Implement Supabase logout
+  const handleLogout = async () => {
+    await signOut();
     navigate('/');
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   const quickActions = [
     {
@@ -49,6 +48,9 @@ const TouristDashboard = () => {
       action: () => {},
     },
   ];
+
+  const displayName = touristProfile?.full_name || 'Tourist';
+  const firstName = displayName.split(' ')[0];
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,7 +78,7 @@ const TouristDashboard = () => {
           {/* Welcome Section */}
           <div className="animate-fade-in">
             <h1 className="font-display text-3xl font-bold text-foreground mb-2">
-              Welcome back, {user.name.split(' ')[0]}!
+              Welcome back, {firstName}!
             </h1>
             <p className="text-muted-foreground">
               Your safety is our priority. Here's your current status.
@@ -84,13 +86,15 @@ const TouristDashboard = () => {
           </div>
 
           {/* Tourist ID Card */}
-          <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            <TouristIdCard
-              touristId={user.id}
-              name={user.name}
-              status={user.status}
-            />
-          </div>
+          {touristProfile && (
+            <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
+              <TouristIdCard
+                touristId={touristProfile.tourist_id}
+                name={touristProfile.full_name}
+                status={touristProfile.status as 'safe' | 'observation' | 'alert'}
+              />
+            </div>
+          )}
 
           {/* Quick Actions */}
           <div className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
@@ -141,47 +145,49 @@ const TouristDashboard = () => {
           </div>
 
           {/* Profile Info */}
-          <div className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User size={20} />
-                  Profile Information
-                </CardTitle>
-                <CardDescription>
-                  Your registered details with the safety system
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Email</p>
-                    <p className="font-medium text-foreground">{user.email}</p>
+          {touristProfile && (
+            <div className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <User size={20} />
+                    Profile Information
+                  </CardTitle>
+                  <CardDescription>
+                    Your registered details with the safety system
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid sm:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Email</p>
+                      <p className="font-medium text-foreground">{touristProfile.email}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Phone</p>
+                      <p className="font-medium text-foreground">{touristProfile.phone || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Emergency Contact</p>
+                      <p className="font-medium text-foreground">
+                        {touristProfile.emergency_contact || 'Not provided'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Registered On</p>
+                      <p className="font-medium text-foreground">
+                        {new Date(touristProfile.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                        })}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Phone</p>
-                    <p className="font-medium text-foreground">{user.phone}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Emergency Contact</p>
-                    <p className="font-medium text-foreground">
-                      {user.emergencyContact || 'Not provided'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Registered On</p>
-                    <p className="font-medium text-foreground">
-                      {new Date(user.registeredAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </main>
     </div>
