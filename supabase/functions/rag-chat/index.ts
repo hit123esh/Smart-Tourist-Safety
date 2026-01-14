@@ -6,212 +6,171 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Categories for knowledge retrieval
-const VALID_CATEGORIES = ["tourist_place", "restaurant", "platform_info", "safety", "emergency"];
+/* -------------------------------
+   RAG-LITE CONFIG
+-------------------------------- */
 
-// Keywords mapping for better retrieval
 const KEYWORD_MAPPINGS: Record<string, string[]> = {
-  tourist_place: ["visit", "see", "attraction", "place", "tourist", "landmark", "park", "garden", "palace", "temple", "museum"],
-  restaurant: ["eat", "food", "restaurant", "cuisine", "dining", "meal", "breakfast", "lunch", "dinner", "cafe", "street food"],
-  platform_info: ["safe haven", "app", "platform", "how to", "use", "register", "id card", "tourist id", "features"],
-  safety: ["safe", "unsafe", "danger", "zone", "green", "yellow", "red", "heat map", "safety", "caution", "alert"],
-  emergency: ["emergency", "help", "sos", "police", "hospital", "unsafe", "feel", "scared", "threat", "lost"],
+  tourist_place: ["visit", "see", "attraction", "park", "garden", "palace", "temple", "museum"],
+  restaurant: ["eat", "food", "restaurant", "cafe", "street food"],
+  platform_info: ["safe haven", "platform", "app", "register", "tourist id"],
+  safety: ["safe", "unsafe", "zone", "green", "yellow", "red", "heat map"],
+  emergency: ["emergency", "help", "sos", "police", "hospital", "lost"],
 };
 
 function identifyCategories(query: string): string[] {
-  const lowerQuery = query.toLowerCase();
-  const matchedCategories: string[] = [];
+  const q = query.toLowerCase();
+  const matched = Object.entries(KEYWORD_MAPPINGS)
+    .filter(([_, keywords]) => keywords.some((k) => q.includes(k)))
+    .map(([category]) => category);
 
-  for (const [category, keywords] of Object.entries(KEYWORD_MAPPINGS)) {
-    if (keywords.some(keyword => lowerQuery.includes(keyword))) {
-      matchedCategories.push(category);
-    }
-  }
-
-  // Default to platform_info if no match
-  return matchedCategories.length > 0 ? matchedCategories : ["platform_info"];
+  return matched.length > 0 ? matched : ["platform_info"];
 }
 
 function isOutOfScope(query: string): boolean {
-  const outOfScopePatterns = [
-    /\b(code|program|javascript|python|java|react|programming)\b/i,
-    /\b(politics|election|government|minister|president)\b/i,
-    /\b(medical|doctor|disease|symptom|health advice)\b/i,
-    /\b(legal|lawyer|court|law|lawsuit)\b/i,
-    /\b(stock|invest|crypto|bitcoin|trading)\b/i,
-    /\b(math|calculate|equation|formula)\b/i,
-    /\b(recipe|cook|bake)\b/i,
-  ];
-
-  // Check if query is about Bangalore/tourism/Safe Haven
-  const inScopePatterns = [
-    /\b(bangalore|bengaluru|karnataka)\b/i,
-    /\b(tourist|travel|visit|trip|vacation)\b/i,
-    /\b(safe haven|safety|heat map|zone)\b/i,
-    /\b(restaurant|food|eat|dining)\b/i,
-    /\b(place|attraction|landmark|park|garden|palace)\b/i,
-    /\b(emergency|help|police|hospital)\b/i,
-    /\b(platform|app|register|how to)\b/i,
-  ];
-
-  const hasInScopeMatch = inScopePatterns.some(pattern => pattern.test(query));
-  const hasOutOfScopeMatch = outOfScopePatterns.some(pattern => pattern.test(query));
-
-  // If it matches out-of-scope patterns and doesn't match in-scope, reject
-  if (hasOutOfScopeMatch && !hasInScopeMatch) {
-    return true;
-  }
-
-  return false;
+  const outOfScope = /\b(code|program|python|java|crypto|stock|politics|math)\b/i;
+  const inScope = /\b(bangalore|tourist|restaurant|safe haven|safety|police)\b/i;
+  return outOfScope.test(query) && !inScope.test(query);
 }
 
+/* -------------------------------
+   EDGE FUNCTION
+-------------------------------- */
+
 serve(async (req) => {
-  // Handle CORS
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { message, history } = await req.json();
+    const { message } = await req.json();
 
     if (!message || typeof message !== "string") {
-      return new Response(
-        JSON.stringify({ error: "Message is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Message required" }), {
+        status: 400,
+        headers: corsHeaders,
+      });
     }
 
-    // Check for out-of-scope queries
     if (isOutOfScope(message)) {
       return new Response(
         JSON.stringify({
-          response: "I can help only with Bangalore tourism and Safe Haven platform-related questions. For other topics, please consult appropriate resources.",
+          response: "I can help only with Bangalore tourism and Safe Haven platform-related questions.",
           sources: [],
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: corsHeaders },
       );
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+    /* -------------------------------
+       ENV
+    -------------------------------- */
 
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error("Supabase credentials not configured");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error("Supabase credentials missing");
     }
 
-    if (!geminiApiKey) {
-      throw new Error("Gemini API key not configured");
+    if (!OPENROUTER_API_KEY) {
+      throw new Error("OpenRouter API key missing");
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Identify relevant categories from the query
+    /* -------------------------------
+       RAG RETRIEVAL
+    -------------------------------- */
+
     const categories = identifyCategories(message);
 
-    // Retrieve knowledge from database
-    const { data: knowledgeData, error: dbError } = await supabase
+    const { data, error } = await supabase
       .from("chat_knowledge")
-      .select("title, content, category, tags")
+      .select("title, content, category")
       .in("category", categories)
       .eq("city", "Bangalore");
 
-    if (dbError) {
-      console.error("Database error:", dbError);
-      throw new Error("Failed to retrieve knowledge");
-    }
-
-    // If no knowledge found, refuse politely
-    if (!knowledgeData || knowledgeData.length === 0) {
+    if (error || !data || data.length === 0) {
       return new Response(
         JSON.stringify({
-          response: "I don't have specific information about that topic. I can help you with Bangalore tourist places, restaurants, safety zones, and Safe Haven platform features. What would you like to know?",
+          response:
+            "I don’t have information on that topic. I can help with Bangalore tourism, safety zones, and Safe Haven features.",
           sources: [],
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: corsHeaders },
       );
     }
 
-    // Build context from retrieved knowledge
-    const context = knowledgeData
-      .map((k) => `[${k.category.toUpperCase()}] ${k.title}:\n${k.content}`)
-      .join("\n\n---\n\n");
+    const context = data.map((k) => `[${k.category.toUpperCase()}] ${k.title}:\n${k.content}`).join("\n\n---\n\n");
 
-    // Build conversation history for context
-    const historyContext = history
-      ? history.slice(-6).map((h: { role: string; content: string }) => ({
-          role: h.role === "user" ? "user" : "model",
-          parts: [{ text: h.content }],
-        }))
-      : [];
+    /* -------------------------------
+       SYSTEM PROMPT
+    -------------------------------- */
 
-    // Construct the prompt with strict RAG-Lite instructions
-    const systemPrompt = `You are the Safe Haven Assistant, a helpful chatbot for tourists visiting Bangalore, India.
+    const systemPrompt = `
+You are the Safe Haven Assistant for tourists visiting Bangalore.
 
-CRITICAL INSTRUCTIONS:
-1. You MUST answer ONLY using the provided context below
-2. If the answer is not found in the context, politely say you don't have that information
-3. NEVER use your general knowledge - only the provided context
-4. Keep responses concise, friendly, and helpful
-5. Focus on tourist safety and helping visitors navigate Bangalore
+RULES:
+- Answer ONLY using the context below
+- If information is missing, politely refuse
+- No general knowledge
+- Keep answers short and helpful
 
-AUTHORITATIVE CONTEXT (Use ONLY this information to answer):
+CONTEXT:
 ${context}
+`;
 
-Remember: You can ONLY answer questions about:
-- Bangalore tourist places
-- Restaurants and food in Bangalore
-- Safe Haven platform features (safety map, zones, tourist ID)
-- Safety information and what to do in emergencies
+    /* -------------------------------
+       OPENROUTER CALL
+    -------------------------------- */
 
-For ANY other topic, respond with: "I can help only with Bangalore tourism and Safe Haven platform-related questions."`;
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://safe-haven.app",
+        "X-Title": "Safe Haven RAG Bot",
+      },
+      body: JSON.stringify({
+        model: "allenai/molmo-2-8b:free",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: message },
+        ],
+        temperature: 0.3,
+        max_tokens: 500,
+      }),
+    });
 
-    // Call Gemini API
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            ...historyContext,
-            { role: "user", parts: [{ text: message }] },
-          ],
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 500,
-            topP: 0.8,
-          },
-        }),
-      }
-    );
-
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error("Gemini API error:", errorText);
-      throw new Error("Failed to get response from AI");
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("OpenRouter error:", err);
+      throw new Error("OpenRouter request failed");
     }
 
-    const geminiData = await geminiResponse.json();
-    const aiResponse = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 
-      "I apologize, but I couldn't generate a response. Please try again.";
+    const result = await response.json();
+    const aiText = result.choices?.[0]?.message?.content ?? "I couldn’t generate a response.";
 
     return new Response(
       JSON.stringify({
-        response: aiResponse,
-        sources: knowledgeData.map((k) => ({ title: k.title, category: k.category })),
+        response: aiText,
+        sources: data.map((k) => ({
+          title: k.title,
+          category: k.category,
+        })),
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: corsHeaders },
     );
-  } catch (error) {
-    console.error("Error in rag-chat function:", error);
+  } catch (err) {
+    console.error("rag-chat error:", err);
     return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : "An unexpected error occurred" 
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "Unexpected server error",
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: corsHeaders },
     );
   }
 });
