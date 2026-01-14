@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import Logo from '@/components/Logo';
 import StatusBadge from '@/components/StatusBadge';
+import SafetyHeatMap from '@/components/SafetyHeatMap';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/services/supabaseClient';
 
@@ -195,6 +196,11 @@ const PoliceDashboard = () => {
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Safety Heat Map */}
+          <div className="animate-slide-up" style={{ animationDelay: '0.15s' }}>
+            <SafetyHeatMap height="450px" />
           </div>
 
           {/* Tourist Table */}
