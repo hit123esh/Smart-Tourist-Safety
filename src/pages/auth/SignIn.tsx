@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { LogIn, Mail, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,15 +7,28 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Logo from '@/components/Logo';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 const SignIn = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { signIn, user, userRole, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!loading && user) {
+      if (userRole === 'police' || userRole === 'admin') {
+        navigate('/police/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
+    }
+  }, [user, userRole, loading, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
@@ -28,15 +41,24 @@ const SignIn = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // TODO: Implement Supabase signin once credentials are provided
-    setTimeout(() => {
+    const { error } = await signIn(formData.email, formData.password);
+
+    if (error) {
       toast({
-        title: 'Supabase Not Configured',
-        description: 'Please provide your Supabase credentials to enable authentication.',
+        title: 'Sign In Failed',
+        description: error.message,
         variant: 'destructive',
       });
       setIsLoading(false);
-    }, 1000);
+      return;
+    }
+
+    toast({
+      title: 'Welcome back!',
+      description: 'You have successfully signed in.',
+    });
+    
+    // Navigation will happen via useEffect when user state updates
   };
 
   return (
@@ -87,9 +109,6 @@ const SignIn = () => {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">Password</Label>
-                  <Link to="/forgot-password" className="text-xs text-accent hover:underline">
-                    Forgot password?
-                  </Link>
                 </div>
                 <Input
                   id="password"
