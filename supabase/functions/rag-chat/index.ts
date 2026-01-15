@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-console.log("OPENROUTER KEY FOUND:", OPENROUTER_API_KEY ? "YES" : "NO");
+
 
 /* -------------------------------
    RAG-LITE CONFIG
