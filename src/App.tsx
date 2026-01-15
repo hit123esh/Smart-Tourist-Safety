@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 // Context
 import { AuthProvider } from "./contexts/AuthContext";
+import { SimulationProvider } from "./contexts/SimulationContext";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -32,36 +33,38 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<Index />} />
-            
-            {/* Auth Routes */}
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/signin" element={<SignIn />} />
-            <Route path="/police/login" element={<PoliceLogin />} />
-            
-            {/* Protected Dashboard Routes */}
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute allowedRoles={['tourist']}>
-                  <TouristDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/police/dashboard"
-              element={
-                <ProtectedRoute allowedRoles={['police', 'admin']}>
-                  <PoliceDashboard />
-                </ProtectedRoute>
-              }
-            />
-            
-            {/* Catch-all */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <SimulationProvider>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<Index />} />
+              
+              {/* Auth Routes */}
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/signin" element={<SignIn />} />
+              <Route path="/police/login" element={<PoliceLogin />} />
+              
+              {/* Protected Dashboard Routes */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={['tourist']}>
+                    <TouristDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/police/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={['police', 'admin']}>
+                    <PoliceDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              
+              {/* Catch-all */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </SimulationProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
