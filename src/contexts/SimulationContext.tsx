@@ -34,12 +34,13 @@ export interface AlertLog {
   id: string;
   touristId: string;
   touristName: string;
-  zoneType: ZoneType | 'proximity';
+  zoneType: ZoneType | 'proximity' | 'panic';
   zoneName: string;
   riskStatus: RiskStatus;
   position: { lat: number; lng: number };
   timestamp: Date;
   acknowledged: boolean;
+  isPanic?: boolean;
 }
 
 export interface ZoneTransitionLog {
@@ -63,6 +64,10 @@ interface SimulationContextType {
   alerts: AlertLog[];
   acknowledgeAlert: (alertId: string) => void;
   clearAlerts: () => void;
+  
+  // Panic button
+  triggerPanic: () => void;
+  activePanicAlert: AlertLog | null;
   
   // Zone transition history
   transitionLogs: ZoneTransitionLog[];
@@ -342,6 +347,26 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setAlerts([]);
   }, []);
 
+  // Trigger panic alert
+  const triggerPanic = useCallback(() => {
+    const panicAlert: AlertLog = {
+      id: generateId(),
+      touristId: tourist.id,
+      touristName: tourist.name,
+      zoneType: 'panic',
+      zoneName: tourist.zoneName || 'Unknown Location',
+      riskStatus: tourist.riskStatus,
+      position: tourist.position,
+      timestamp: new Date(),
+      acknowledged: false,
+      isPanic: true,
+    };
+    setAlerts(prev => [panicAlert, ...prev]);
+  }, [tourist.id, tourist.name, tourist.zoneName, tourist.riskStatus, tourist.position]);
+
+  // Get the active (unacknowledged) panic alert
+  const activePanicAlert = alerts.find(a => a.isPanic && !a.acknowledged) || null;
+
   return (
     <SimulationContext.Provider
       value={{
@@ -351,6 +376,8 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         alerts,
         acknowledgeAlert,
         clearAlerts,
+        triggerPanic,
+        activePanicAlert,
         transitionLogs,
         touristsAtRisk,
         formattedRiskDuration,
