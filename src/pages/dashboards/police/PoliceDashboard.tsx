@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LogOut, Users, Search, Filter, RefreshCw, Shield, ChevronDown, Loader2 } from 'lucide-react';
+import { LogOut, Users, Search, Filter, RefreshCw, Shield, ChevronDown, Loader2, MapPin, Bell } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,10 +18,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Logo from '@/components/Logo';
 import StatusBadge from '@/components/StatusBadge';
-import SafetyHeatMap from '@/components/SafetyHeatMap';
+import SimulationMap from '@/components/SimulationMap';
+import AdminControlPanel from '@/components/AdminControlPanel';
+import AlertsPanel from '@/components/AlertsPanel';
+import ZoneTrackingTable from '@/components/ZoneTrackingTable';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSimulation } from '@/contexts/SimulationContext';
 import { supabase } from '@/services/supabaseClient';
 
 interface Tourist {
@@ -37,6 +42,7 @@ interface Tourist {
 const PoliceDashboard = () => {
   const navigate = useNavigate();
   const { signOut, loading: authLoading } = useAuth();
+  const { tourist: simulatedTourist, alerts } = useSimulation();
   const [tourists, setTourists] = useState<Tourist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,6 +90,8 @@ const PoliceDashboard = () => {
     alert: tourists.filter((t) => t.status === 'alert').length,
   };
 
+  const unacknowledgedAlerts = alerts.filter(a => !a.acknowledged).length;
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -107,6 +115,12 @@ const PoliceDashboard = () => {
               <span className="hidden md:block text-sm font-medium text-primary-foreground/80">
                 Police Control Center
               </span>
+              {unacknowledgedAlerts > 0 && (
+                <span className="flex items-center gap-1 px-2 py-1 bg-destructive text-destructive-foreground rounded-full text-xs font-medium animate-pulse">
+                  <Bell size={12} />
+                  {unacknowledgedAlerts} Alert{unacknowledgedAlerts > 1 ? 's' : ''}
+                </span>
+              )}
             </div>
             <Button
               variant="secondary"
@@ -127,192 +141,296 @@ const PoliceDashboard = () => {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-fade-in">
             <div>
               <h1 className="font-display text-3xl font-bold text-foreground mb-2">
-                Tourist Registry
+                Police Dashboard
               </h1>
               <p className="text-muted-foreground">
-                Monitor and manage all registered tourists in the system.
+                Monitor tourist safety zones and manage real-time tracking simulation.
               </p>
             </div>
-            <Button variant="outline" className="gap-2 w-fit" onClick={fetchTourists} disabled={isLoading}>
-              <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
-              Refresh Data
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+                simulatedTourist.currentZone === 'safe' ? 'bg-status-safe-bg text-status-safe' :
+                simulatedTourist.currentZone === 'caution' ? 'bg-status-observation-bg text-status-observation' :
+                simulatedTourist.currentZone === 'danger' ? 'bg-status-alert-bg text-status-alert' :
+                'bg-muted text-muted-foreground'
+              }`}>
+                <MapPin size={14} />
+                Tourist: {simulatedTourist.currentZone.toUpperCase()}
+              </span>
+            </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center">
-                    <Users className="text-accent" size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Tourists</p>
-                    <p className="text-2xl font-bold text-foreground">{stats.total}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-status-safe-bg flex items-center justify-center">
-                    <Shield className="text-status-safe" size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Safe</p>
-                    <p className="text-2xl font-bold text-foreground">{stats.safe}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Tabs for different views */}
+          <Tabs defaultValue="simulation" className="space-y-6">
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="simulation" className="gap-2">
+                <MapPin size={16} />
+                Live Simulation
+              </TabsTrigger>
+              <TabsTrigger value="registry" className="gap-2">
+                <Users size={16} />
+                Tourist Registry
+              </TabsTrigger>
+            </TabsList>
 
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-status-observation-bg flex items-center justify-center">
-                    <Shield className="text-status-observation" size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Under Observation</p>
-                    <p className="text-2xl font-bold text-foreground">{stats.observation}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Simulation Tab */}
+            <TabsContent value="simulation" className="space-y-6">
+              {/* Stats Cards */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-slide-up">
+                <Card className={simulatedTourist.currentZone === 'safe' ? 'ring-2 ring-status-safe' : ''}>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-status-safe-bg flex items-center justify-center">
+                        <Shield className="text-status-safe" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Safe Zones</p>
+                        <p className="text-2xl font-bold text-foreground">3</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-status-alert-bg flex items-center justify-center">
-                    <Shield className="text-status-alert" size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Alerts</p>
-                    <p className="text-2xl font-bold text-foreground">{stats.alert}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                <Card className={simulatedTourist.currentZone === 'caution' ? 'ring-2 ring-status-observation' : ''}>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-status-observation-bg flex items-center justify-center">
+                        <Shield className="text-status-observation" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Caution Zones</p>
+                        <p className="text-2xl font-bold text-foreground">2</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-          {/* Safety Heat Map */}
-          <div className="animate-slide-up" style={{ animationDelay: '0.15s' }}>
-            <SafetyHeatMap height="450px" />
-          </div>
+                <Card className={simulatedTourist.currentZone === 'danger' ? 'ring-2 ring-status-alert' : ''}>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-status-alert-bg flex items-center justify-center">
+                        <Shield className="text-status-alert" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Danger Zones</p>
+                        <p className="text-2xl font-bold text-foreground">2</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-          {/* Tourist Table */}
-          <Card className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            <CardHeader>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                  <CardTitle>Registered Tourists</CardTitle>
-                  <CardDescription>
-                    View all tourists registered in the safety system
-                  </CardDescription>
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-destructive/10 flex items-center justify-center">
+                        <Bell className="text-destructive" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Active Alerts</p>
+                        <p className="text-2xl font-bold text-foreground">{unacknowledgedAlerts}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Main Simulation Area */}
+              <div className="grid lg:grid-cols-3 gap-6">
+                {/* Map - Takes 2/3 on large screens */}
+                <div className="lg:col-span-2">
+                  <SimulationMap height="500px" allowClickToMove />
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                    <Input
-                      placeholder="Search by name, ID, or email..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 w-full sm:w-64"
-                    />
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="gap-2">
-                        <Filter size={18} />
-                        Status
-                        <ChevronDown size={16} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setStatusFilter('all')}>
-                        All Statuses
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter('safe')}>
-                        Safe
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter('observation')}>
-                        Under Observation
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter('alert')}>
-                        Alert
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+
+                {/* Control Panel - Takes 1/3 on large screens */}
+                <div className="space-y-6">
+                  <AdminControlPanel />
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-lg border overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="font-semibold">Tourist ID</TableHead>
-                          <TableHead className="font-semibold">Name</TableHead>
-                          <TableHead className="font-semibold hidden md:table-cell">Email</TableHead>
-                          <TableHead className="font-semibold hidden lg:table-cell">Phone</TableHead>
-                          <TableHead className="font-semibold">Status</TableHead>
-                          <TableHead className="font-semibold hidden sm:table-cell">Registered</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredTourists.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                              {tourists.length === 0 
-                                ? 'No tourists registered yet.'
-                                : 'No tourists found matching your criteria.'}
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          filteredTourists.map((tourist) => (
-                            <TableRow key={tourist.id} className="hover:bg-muted/30">
-                              <TableCell className="font-mono text-sm font-medium">
-                                {tourist.tourist_id}
-                              </TableCell>
-                              <TableCell className="font-medium">{tourist.full_name}</TableCell>
-                              <TableCell className="hidden md:table-cell text-muted-foreground">
-                                {tourist.email}
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell text-muted-foreground">
-                                {tourist.phone || '-'}
-                              </TableCell>
-                              <TableCell>
-                                <StatusBadge status={tourist.status} size="sm" />
-                              </TableCell>
-                              <TableCell className="hidden sm:table-cell text-muted-foreground">
-                                {new Date(tourist.created_at).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric',
-                                })}
-                              </TableCell>
+
+              {/* Alerts and Tracking */}
+              <div className="grid lg:grid-cols-2 gap-6">
+                <AlertsPanel />
+                <ZoneTrackingTable />
+              </div>
+            </TabsContent>
+
+            {/* Registry Tab */}
+            <TabsContent value="registry" className="space-y-6">
+              {/* Stats Cards */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-slide-up">
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center">
+                        <Users className="text-accent" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Total Tourists</p>
+                        <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-status-safe-bg flex items-center justify-center">
+                        <Shield className="text-status-safe" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Safe</p>
+                        <p className="text-2xl font-bold text-foreground">{stats.safe}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-status-observation-bg flex items-center justify-center">
+                        <Shield className="text-status-observation" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Under Observation</p>
+                        <p className="text-2xl font-bold text-foreground">{stats.observation}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-status-alert-bg flex items-center justify-center">
+                        <Shield className="text-status-alert" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Alerts</p>
+                        <p className="text-2xl font-bold text-foreground">{stats.alert}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Tourist Table */}
+              <Card className="animate-slide-up">
+                <CardHeader>
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                      <CardTitle>Registered Tourists</CardTitle>
+                      <CardDescription>
+                        View all tourists registered in the safety system
+                      </CardDescription>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button variant="outline" className="gap-2 w-fit" onClick={fetchTourists} disabled={isLoading}>
+                        <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+                        Refresh
+                      </Button>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                        <Input
+                          placeholder="Search by name, ID, or email..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10 w-full sm:w-64"
+                        />
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="gap-2">
+                            <Filter size={18} />
+                            Status
+                            <ChevronDown size={16} />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setStatusFilter('all')}>
+                            All Statuses
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setStatusFilter('safe')}>
+                            Safe
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setStatusFilter('observation')}>
+                            Under Observation
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setStatusFilter('alert')}>
+                            Alert
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="rounded-lg border overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-muted/50">
+                              <TableHead className="font-semibold">Tourist ID</TableHead>
+                              <TableHead className="font-semibold">Name</TableHead>
+                              <TableHead className="font-semibold hidden md:table-cell">Email</TableHead>
+                              <TableHead className="font-semibold hidden lg:table-cell">Phone</TableHead>
+                              <TableHead className="font-semibold">Status</TableHead>
+                              <TableHead className="font-semibold hidden sm:table-cell">Registered</TableHead>
                             </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="mt-4 text-sm text-muted-foreground">
-                    Showing {filteredTourists.length} of {tourists.length} tourists
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredTourists.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                  {tourists.length === 0 
+                                    ? 'No tourists registered yet.'
+                                    : 'No tourists found matching your criteria.'}
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              filteredTourists.map((tourist) => (
+                                <TableRow key={tourist.id} className="hover:bg-muted/30">
+                                  <TableCell className="font-mono text-sm font-medium">
+                                    {tourist.tourist_id}
+                                  </TableCell>
+                                  <TableCell className="font-medium">{tourist.full_name}</TableCell>
+                                  <TableCell className="hidden md:table-cell text-muted-foreground">
+                                    {tourist.email}
+                                  </TableCell>
+                                  <TableCell className="hidden lg:table-cell text-muted-foreground">
+                                    {tourist.phone || '-'}
+                                  </TableCell>
+                                  <TableCell>
+                                    <StatusBadge status={tourist.status} size="sm" />
+                                  </TableCell>
+                                  <TableCell className="hidden sm:table-cell text-muted-foreground">
+                                    {new Date(tourist.created_at).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      year: 'numeric',
+                                    })}
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      <div className="mt-4 text-sm text-muted-foreground">
+                        Showing {filteredTourists.length} of {tourists.length} tourists
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>
