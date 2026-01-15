@@ -14,6 +14,7 @@ import {
   ANIMATION_CONFIG,
   RouteWaypoint,
 } from '@/config/simulationRoutes';
+import { useTouristEventLogger } from '@/hooks/useTouristEventLogger';
 
 export interface SimulatedTourist {
   id: string;
@@ -121,6 +122,9 @@ const isRiskStatus = (status: RiskStatus): boolean => {
 };
 
 export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Event logger hook
+  const { logEvent, logPanicEvent, logModeChangeEvent } = useTouristEventLogger();
+
   // Initialize tourist at a safe location
   const [tourist, setTourist] = useState<SimulatedTourist>(() => {
     const initialPosition = PRESET_POSITIONS[0].position; // Cubbon Park (Safe)
@@ -222,6 +226,16 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
         // If transitioning between risk states, keep timer running
       }
+
+      // Log event to database (async, non-blocking)
+      logEvent({
+        touristId: prev.id,
+        position,
+        riskStatus: newRiskStatus,
+        zoneName: detection.zone?.name || null,
+        riskTimerMs: riskDurationMs,
+        simulationMode,
+      });
       
       return {
         ...prev,
@@ -267,7 +281,7 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       
       previousRiskStatus.current = newRiskStatus;
     }
-  }, [tourist.id, tourist.name]);
+  }, [tourist.id, tourist.name, simulationMode, logEvent]);
 
   // Animation effect for automated modes
   useEffect(() => {
@@ -319,9 +333,19 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Set simulation mode
   const setSimulationMode = useCallback((mode: SimulationMode) => {
+    // Log mode change event
+    logModeChangeEvent({
+      touristId: tourist.id,
+      position: tourist.position,
+      riskStatus: tourist.riskStatus,
+      zoneName: tourist.zoneName,
+      riskTimerMs: tourist.riskDurationMs,
+      simulationMode: mode,
+    });
+    
     setSimulationModeState(mode);
     setCurrentRouteIndex(0);
-  }, []);
+  }, [tourist.id, tourist.position, tourist.riskStatus, tourist.zoneName, tourist.riskDurationMs, logModeChangeEvent]);
 
   // Move tourist to a preset position
   const moveToPreset = useCallback((presetIndex: number) => {
@@ -349,6 +373,16 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Trigger panic alert
   const triggerPanic = useCallback(() => {
+    // Log panic event to database
+    logPanicEvent({
+      touristId: tourist.id,
+      position: tourist.position,
+      riskStatus: tourist.riskStatus,
+      zoneName: tourist.zoneName,
+      riskTimerMs: tourist.riskDurationMs,
+      simulationMode,
+    });
+
     const panicAlert: AlertLog = {
       id: generateId(),
       touristId: tourist.id,
@@ -362,7 +396,7 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       isPanic: true,
     };
     setAlerts(prev => [panicAlert, ...prev]);
-  }, [tourist.id, tourist.name, tourist.zoneName, tourist.riskStatus, tourist.position]);
+  }, [tourist.id, tourist.name, tourist.zoneName, tourist.riskStatus, tourist.position, tourist.riskDurationMs, simulationMode, logPanicEvent]);
 
   // Get the active (unacknowledged) panic alert
   const activePanicAlert = alerts.find(a => a.isPanic && !a.acknowledged) || null;

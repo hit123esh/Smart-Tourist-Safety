@@ -25,6 +25,7 @@ import SimulationMap from '@/components/SimulationMap';
 import AdminControlPanel from '@/components/AdminControlPanel';
 import AlertsPanel from '@/components/AlertsPanel';
 import ZoneTrackingTable from '@/components/ZoneTrackingTable';
+import { EventLogPanel } from '@/components/EventLogPanel';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSimulation } from '@/contexts/SimulationContext';
 import { supabase } from '@/services/supabaseClient';
@@ -263,6 +264,9 @@ const PoliceDashboard = () => {
                 <AlertsPanel onPanicAlertClick={handlePanicAlertClick} />
                 <ZoneTrackingTable />
               </div>
+
+              {/* Event Log Panel */}
+              <EventLogPanel />
             </TabsContent>
 
             {/* Registry Tab */}
