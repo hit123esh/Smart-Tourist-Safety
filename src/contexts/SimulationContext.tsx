@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { ZoneType, detectZone, GeoZone, PRESET_POSITIONS } from '@/config/geofences';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { 
+  ZoneType, 
+  RiskStatus, 
+  detectZoneWithProximity, 
+  GeoZone, 
+  PRESET_POSITIONS,
+  ZoneDetectionResult 
+} from '@/config/geofences';
 
 export interface SimulatedTourist {
   id: string;
@@ -7,18 +14,34 @@ export interface SimulatedTourist {
   position: { lat: number; lng: number };
   currentZone: ZoneType | 'unknown';
   zoneName: string | null;
+  riskStatus: RiskStatus;
+  nearestRiskZone: string | null;
+  distanceToRisk: number | null;
   lastUpdated: Date;
+  // Risk timer tracking
+  riskStartTime: Date | null;
+  riskDurationMs: number;
 }
 
 export interface AlertLog {
   id: string;
   touristId: string;
   touristName: string;
-  zoneType: ZoneType;
+  zoneType: ZoneType | 'proximity';
   zoneName: string;
+  riskStatus: RiskStatus;
   position: { lat: number; lng: number };
   timestamp: Date;
   acknowledged: boolean;
+}
+
+export interface ZoneTransitionLog {
+  id: string;
+  touristId: string;
+  fromStatus: RiskStatus;
+  toStatus: RiskStatus;
+  zoneName: string | null;
+  timestamp: Date;
 }
 
 interface SimulationContextType {
@@ -34,9 +57,14 @@ interface SimulationContextType {
   acknowledgeAlert: (alertId: string) => void;
   clearAlerts: () => void;
   
-  // Zone tracking for police dashboard
-  touristsInDanger: SimulatedTourist[];
-  touristsInCaution: SimulatedTourist[];
+  // Zone transition history
+  transitionLogs: ZoneTransitionLog[];
+  
+  // Tourists in risk states (for police dashboard)
+  touristsAtRisk: SimulatedTourist[];
+  
+  // Timer management
+  formattedRiskDuration: string;
 }
 
 const SimulationContext = createContext<SimulationContextType | null>(null);
@@ -52,40 +80,155 @@ export const useSimulation = () => {
 // Generate unique ID
 const generateId = () => Math.random().toString(36).substring(2, 15);
 
+// Format duration for display
+const formatDuration = (ms: number): string => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  } else {
+    return `${seconds}s`;
+  }
+};
+
+// Check if status is a risk status
+const isRiskStatus = (status: RiskStatus): boolean => {
+  return status !== 'SAFE';
+};
+
 export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Initialize tourist at a safe location
   const [tourist, setTourist] = useState<SimulatedTourist>(() => {
     const initialPosition = PRESET_POSITIONS[0].position; // Cubbon Park (Safe)
-    const detection = detectZone(initialPosition);
+    const detection = detectZoneWithProximity(initialPosition);
     return {
       id: 'TOUR-' + generateId().toUpperCase().slice(0, 8),
       name: 'Demo Tourist',
       position: initialPosition,
       currentZone: detection.type,
       zoneName: detection.zone?.name || null,
+      riskStatus: detection.riskStatus,
+      nearestRiskZone: detection.nearestRiskZone?.name || null,
+      distanceToRisk: detection.distanceToNearestRisk,
       lastUpdated: new Date(),
+      riskStartTime: null,
+      riskDurationMs: 0,
     };
   });
 
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
-  const [previousZone, setPreviousZone] = useState<ZoneType | 'unknown'>(tourist.currentZone);
+  const [transitionLogs, setTransitionLogs] = useState<ZoneTransitionLog[]>([]);
+  const [formattedRiskDuration, setFormattedRiskDuration] = useState('0s');
+  
+  const previousRiskStatus = useRef<RiskStatus>(tourist.riskStatus);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Track tourists in danger/caution zones
-  const touristsInDanger = tourist.currentZone === 'danger' ? [tourist] : [];
-  const touristsInCaution = tourist.currentZone === 'caution' ? [tourist] : [];
+  // Track tourists at risk for police dashboard
+  const touristsAtRisk = isRiskStatus(tourist.riskStatus) ? [tourist] : [];
+
+  // Update timer every second when in risk zone
+  useEffect(() => {
+    if (isRiskStatus(tourist.riskStatus) && tourist.riskStartTime) {
+      timerIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - tourist.riskStartTime!.getTime();
+        setTourist(prev => ({
+          ...prev,
+          riskDurationMs: elapsed,
+        }));
+        setFormattedRiskDuration(formatDuration(elapsed));
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      setFormattedRiskDuration('0s');
+    }
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [tourist.riskStatus, tourist.riskStartTime]);
 
   // Move tourist to a new position
   const moveTourist = useCallback((position: { lat: number; lng: number }) => {
-    const detection = detectZone(position);
+    const detection = detectZoneWithProximity(position);
+    const newRiskStatus = detection.riskStatus;
+    const previousStatus = previousRiskStatus.current;
     
-    setTourist(prev => ({
-      ...prev,
-      position,
-      currentZone: detection.type,
-      zoneName: detection.zone?.name || null,
-      lastUpdated: new Date(),
-    }));
-  }, []);
+    setTourist(prev => {
+      const now = new Date();
+      
+      // Determine timer state
+      let riskStartTime = prev.riskStartTime;
+      let riskDurationMs = prev.riskDurationMs;
+      
+      // Status changed - handle timer
+      if (newRiskStatus !== previousStatus) {
+        if (isRiskStatus(newRiskStatus) && !isRiskStatus(previousStatus)) {
+          // Entering risk zone - start timer
+          riskStartTime = now;
+          riskDurationMs = 0;
+        } else if (!isRiskStatus(newRiskStatus) && isRiskStatus(previousStatus)) {
+          // Leaving risk zone - reset timer
+          riskStartTime = null;
+          riskDurationMs = 0;
+        }
+        // If transitioning between risk states, keep timer running
+      }
+      
+      return {
+        ...prev,
+        position,
+        currentZone: detection.type,
+        zoneName: detection.zone?.name || null,
+        riskStatus: newRiskStatus,
+        nearestRiskZone: detection.nearestRiskZone?.name || null,
+        distanceToRisk: detection.distanceToNearestRisk,
+        lastUpdated: now,
+        riskStartTime,
+        riskDurationMs,
+      };
+    });
+    
+    // Log zone transition
+    if (newRiskStatus !== previousStatus) {
+      const transitionLog: ZoneTransitionLog = {
+        id: generateId(),
+        touristId: tourist.id,
+        fromStatus: previousStatus,
+        toStatus: newRiskStatus,
+        zoneName: detection.zone?.name || detection.nearestRiskZone?.name || null,
+        timestamp: new Date(),
+      };
+      setTransitionLogs(prev => [transitionLog, ...prev].slice(0, 50)); // Keep last 50 logs
+      
+      // Create alert for IN_DANGER status
+      if (newRiskStatus === 'IN_DANGER') {
+        const newAlert: AlertLog = {
+          id: generateId(),
+          touristId: tourist.id,
+          touristName: tourist.name,
+          zoneType: 'danger',
+          zoneName: detection.zone?.name || 'Unknown Danger Zone',
+          riskStatus: newRiskStatus,
+          position,
+          timestamp: new Date(),
+          acknowledged: false,
+        };
+        setAlerts(prev => [newAlert, ...prev]);
+      }
+      
+      previousRiskStatus.current = newRiskStatus;
+    }
+  }, [tourist.id, tourist.name]);
 
   // Move tourist to a preset position
   const moveToPreset = useCallback((presetIndex: number) => {
@@ -94,28 +237,6 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       moveTourist(preset.position);
     }
   }, [moveTourist]);
-
-  // Effect to create alerts when entering danger or caution zones
-  useEffect(() => {
-    // Only create alert if zone changed to danger or caution
-    if (tourist.currentZone !== previousZone) {
-      if (tourist.currentZone === 'danger' || tourist.currentZone === 'caution') {
-        const newAlert: AlertLog = {
-          id: generateId(),
-          touristId: tourist.id,
-          touristName: tourist.name,
-          zoneType: tourist.currentZone,
-          zoneName: tourist.zoneName || 'Unknown Zone',
-          position: tourist.position,
-          timestamp: new Date(),
-          acknowledged: false,
-        };
-        
-        setAlerts(prev => [newAlert, ...prev]);
-      }
-      setPreviousZone(tourist.currentZone);
-    }
-  }, [tourist.currentZone, tourist.zoneName, tourist.position, tourist.id, tourist.name, previousZone]);
 
   // Acknowledge an alert
   const acknowledgeAlert = useCallback((alertId: string) => {
@@ -140,8 +261,9 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         alerts,
         acknowledgeAlert,
         clearAlerts,
-        touristsInDanger,
-        touristsInCaution,
+        transitionLogs,
+        touristsAtRisk,
+        formattedRiskDuration,
       }}
     >
       {children}
