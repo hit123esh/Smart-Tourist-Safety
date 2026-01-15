@@ -42,11 +42,12 @@ interface Tourist {
 const PoliceDashboard = () => {
   const navigate = useNavigate();
   const { signOut, loading: authLoading } = useAuth();
-  const { tourist: simulatedTourist, alerts } = useSimulation();
+  const { tourist: simulatedTourist, alerts, activePanicAlert } = useSimulation();
   const [tourists, setTourists] = useState<Tourist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [mapCenterPosition, setMapCenterPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   const fetchTourists = async () => {
     setIsLoading(true);
@@ -92,6 +93,11 @@ const PoliceDashboard = () => {
 
   const unacknowledgedAlerts = alerts.filter(a => !a.acknowledged).length;
 
+  // Center map on panic alert position
+  const handlePanicAlertClick = (position: { lat: number; lng: number }) => {
+    setMapCenterPosition(position);
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -115,7 +121,12 @@ const PoliceDashboard = () => {
               <span className="hidden md:block text-sm font-medium text-primary-foreground/80">
                 Police Control Center
               </span>
-              {unacknowledgedAlerts > 0 && (
+              {activePanicAlert && (
+                <span className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white rounded-full text-xs font-bold animate-pulse">
+                  🚨 PANIC ALERT ACTIVE
+                </span>
+              )}
+              {!activePanicAlert && unacknowledgedAlerts > 0 && (
                 <span className="flex items-center gap-1 px-2 py-1 bg-destructive text-destructive-foreground rounded-full text-xs font-medium animate-pulse">
                   <Bell size={12} />
                   {unacknowledgedAlerts} Alert{unacknowledgedAlerts > 1 ? 's' : ''}
@@ -238,7 +249,7 @@ const PoliceDashboard = () => {
               <div className="grid lg:grid-cols-3 gap-6">
                 {/* Map - Takes 2/3 on large screens */}
                 <div className="lg:col-span-2">
-                  <SimulationMap height="500px" allowClickToMove />
+                  <SimulationMap height="500px" allowClickToMove centerOnPosition={mapCenterPosition} />
                 </div>
 
                 {/* Control Panel - Takes 1/3 on large screens */}
@@ -249,7 +260,7 @@ const PoliceDashboard = () => {
 
               {/* Alerts and Tracking */}
               <div className="grid lg:grid-cols-2 gap-6">
-                <AlertsPanel />
+                <AlertsPanel onPanicAlertClick={handlePanicAlertClick} />
                 <ZoneTrackingTable />
               </div>
             </TabsContent>

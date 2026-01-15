@@ -14,6 +14,7 @@ interface SimulationMapProps {
   showTitle?: boolean;
   allowClickToMove?: boolean;
   onMapClick?: (position: { lat: number; lng: number }) => void;
+  centerOnPosition?: { lat: number; lng: number } | null;
 }
 
 const getRiskStatusLabel = (status: RiskStatus): string => {
@@ -32,6 +33,7 @@ const SimulationMap = ({
   showTitle = true,
   allowClickToMove = false,
   onMapClick,
+  centerOnPosition,
 }: SimulationMapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -40,20 +42,20 @@ const SimulationMap = ({
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   const { isLoaded, loadError } = useGoogleMaps();
-  const { tourist, moveTourist, formattedRiskDuration } = useSimulation();
+  const { tourist, moveTourist, formattedRiskDuration, activePanicAlert } = useSimulation();
 
-  // Create tourist marker icon based on risk status
-  const createTouristIcon = useCallback((riskStatus: RiskStatus): google.maps.Symbol => {
-    const color = RISK_STATUS_COLORS[riskStatus];
-    const isAtRisk = riskStatus !== 'SAFE';
+  // Create tourist marker icon based on risk status and panic state
+  const createTouristIcon = useCallback((riskStatus: RiskStatus, isPanic?: boolean): google.maps.Symbol => {
+    const color = isPanic ? '#dc2626' : RISK_STATUS_COLORS[riskStatus];
+    const isAtRisk = riskStatus !== 'SAFE' || isPanic;
     
     return {
       path: google.maps.SymbolPath.CIRCLE,
       fillColor: color,
       fillOpacity: 1,
-      strokeColor: '#ffffff',
-      strokeWeight: isAtRisk ? 4 : 3,
-      scale: isAtRisk ? 16 : 14,
+      strokeColor: isPanic ? '#fef2f2' : '#ffffff',
+      strokeWeight: isPanic ? 6 : isAtRisk ? 4 : 3,
+      scale: isPanic ? 20 : isAtRisk ? 16 : 14,
     };
   }, []);
 
@@ -128,7 +130,7 @@ const SimulationMap = ({
     touristMarkerRef.current = new google.maps.Marker({
       position: tourist.position,
       map: mapInstanceRef.current,
-      icon: createTouristIcon(tourist.riskStatus),
+      icon: createTouristIcon(tourist.riskStatus, !!activePanicAlert),
       title: 'Simulated Tourist',
       animation: google.maps.Animation.DROP,
       zIndex: 1000,
@@ -155,15 +157,23 @@ const SimulationMap = ({
       }
       mapInstanceRef.current = null;
     };
-  }, [isLoaded, allowClickToMove, moveTourist, onMapClick, createTouristIcon]);
+  }, [isLoaded, allowClickToMove, moveTourist, onMapClick, createTouristIcon, activePanicAlert]);
 
-  // Update tourist marker when position/risk status changes
+  // Update tourist marker when position/risk status/panic changes
   useEffect(() => {
     if (touristMarkerRef.current && isLoaded) {
       touristMarkerRef.current.setPosition(tourist.position);
-      touristMarkerRef.current.setIcon(createTouristIcon(tourist.riskStatus));
+      touristMarkerRef.current.setIcon(createTouristIcon(tourist.riskStatus, !!activePanicAlert));
     }
-  }, [tourist.position, tourist.riskStatus, isLoaded, createTouristIcon]);
+  }, [tourist.position, tourist.riskStatus, isLoaded, createTouristIcon, activePanicAlert]);
+
+  // Center map on position when requested (for panic alerts)
+  useEffect(() => {
+    if (centerOnPosition && mapInstanceRef.current && isLoaded) {
+      mapInstanceRef.current.panTo(centerOnPosition);
+      mapInstanceRef.current.setZoom(16);
+    }
+  }, [centerOnPosition, isLoaded]);
 
   // Loading state
   if (!isLoaded) {
