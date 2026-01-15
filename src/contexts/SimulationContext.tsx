@@ -7,6 +7,13 @@ import {
   PRESET_POSITIONS,
   ZoneDetectionResult 
 } from '@/config/geofences';
+import {
+  SimulationMode,
+  SAFE_MODE_ROUTE,
+  DANGER_MODE_ROUTE,
+  ANIMATION_CONFIG,
+  RouteWaypoint,
+} from '@/config/simulationRoutes';
 
 export interface SimulatedTourist {
   id: string;
@@ -65,6 +72,13 @@ interface SimulationContextType {
   
   // Timer management
   formattedRiskDuration: string;
+  
+  // Simulation mode controls
+  simulationMode: SimulationMode;
+  setSimulationMode: (mode: SimulationMode) => void;
+  isAnimating: boolean;
+  currentRouteIndex: number;
+  totalRoutePoints: number;
 }
 
 const SimulationContext = createContext<SimulationContextType | null>(null);
@@ -125,8 +139,28 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [transitionLogs, setTransitionLogs] = useState<ZoneTransitionLog[]>([]);
   const [formattedRiskDuration, setFormattedRiskDuration] = useState('0s');
   
+  // Simulation mode state
+  const [simulationMode, setSimulationModeState] = useState<SimulationMode>('manual');
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [currentRouteIndex, setCurrentRouteIndex] = useState(0);
+  
   const previousRiskStatus = useRef<RiskStatus>(tourist.riskStatus);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Get current route based on mode
+  const getCurrentRoute = (): RouteWaypoint[] => {
+    switch (simulationMode) {
+      case 'safe':
+        return SAFE_MODE_ROUTE;
+      case 'danger':
+        return DANGER_MODE_ROUTE;
+      default:
+        return [];
+    }
+  };
+  
+  const totalRoutePoints = getCurrentRoute().length;
 
   // Track tourists at risk for police dashboard
   const touristsAtRisk = isRiskStatus(tourist.riskStatus) ? [tourist] : [];
@@ -230,13 +264,69 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [tourist.id, tourist.name]);
 
+  // Animation effect for automated modes
+  useEffect(() => {
+    if (simulationMode === 'manual') {
+      // Stop animation when in manual mode
+      if (animationIntervalRef.current) {
+        clearInterval(animationIntervalRef.current);
+        animationIntervalRef.current = null;
+      }
+      setIsAnimating(false);
+      return;
+    }
+
+    const route = getCurrentRoute();
+    if (route.length === 0) return;
+
+    setIsAnimating(true);
+    let index = 0;
+    setCurrentRouteIndex(0);
+
+    // Move to first position immediately
+    moveTourist({ lat: route[0].lat, lng: route[0].lng });
+
+    const animateStep = () => {
+      index = (index + 1) % route.length;
+      setCurrentRouteIndex(index);
+      
+      const waypoint = route[index];
+      moveTourist({ lat: waypoint.lat, lng: waypoint.lng });
+
+      // Schedule next step with optional pause
+      const delay = waypoint.pauseMs 
+        ? ANIMATION_CONFIG.updateIntervalMs + waypoint.pauseMs 
+        : ANIMATION_CONFIG.updateIntervalMs;
+      
+      animationIntervalRef.current = setTimeout(animateStep, delay);
+    };
+
+    // Start animation loop
+    animationIntervalRef.current = setTimeout(animateStep, ANIMATION_CONFIG.updateIntervalMs);
+
+    return () => {
+      if (animationIntervalRef.current) {
+        clearTimeout(animationIntervalRef.current);
+        animationIntervalRef.current = null;
+      }
+    };
+  }, [simulationMode, moveTourist]);
+
+  // Set simulation mode
+  const setSimulationMode = useCallback((mode: SimulationMode) => {
+    setSimulationModeState(mode);
+    setCurrentRouteIndex(0);
+  }, []);
+
   // Move tourist to a preset position
   const moveToPreset = useCallback((presetIndex: number) => {
     const preset = PRESET_POSITIONS[presetIndex];
     if (preset) {
+      // Switch to manual mode when using presets
+      setSimulationMode('manual');
       moveTourist(preset.position);
     }
-  }, [moveTourist]);
+  }, [moveTourist, setSimulationMode]);
 
   // Acknowledge an alert
   const acknowledgeAlert = useCallback((alertId: string) => {
@@ -264,6 +354,11 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         transitionLogs,
         touristsAtRisk,
         formattedRiskDuration,
+        simulationMode,
+        setSimulationMode,
+        isAnimating,
+        currentRouteIndex,
+        totalRoutePoints,
       }}
     >
       {children}
