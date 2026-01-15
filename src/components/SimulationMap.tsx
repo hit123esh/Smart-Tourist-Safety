@@ -2,9 +2,10 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { Loader2, Map, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useGoogleMaps } from '@/hooks/useGoogleMaps';
 import { DEFAULT_MAP_CENTER, DEFAULT_ZOOM } from '@/config/maps';
-import { GEOFENCED_ZONES, ZONE_COLORS, ZoneType } from '@/config/geofences';
+import { GEOFENCED_ZONES, ZONE_COLORS, RISK_STATUS_COLORS, RiskStatus, PROXIMITY_BUFFER_METERS } from '@/config/geofences';
 import { useSimulation } from '@/contexts/SimulationContext';
 
 interface SimulationMapProps {
@@ -14,6 +15,16 @@ interface SimulationMapProps {
   allowClickToMove?: boolean;
   onMapClick?: (position: { lat: number; lng: number }) => void;
 }
+
+const getRiskStatusLabel = (status: RiskStatus): string => {
+  switch (status) {
+    case 'IN_DANGER': return 'IN DANGER';
+    case 'NEAR_DANGER': return 'NEAR DANGER';
+    case 'IN_CAUTION': return 'IN CAUTION';
+    case 'NEAR_CAUTION': return 'NEAR CAUTION';
+    default: return 'SAFE';
+  }
+};
 
 const SimulationMap = ({
   className = '',
@@ -29,31 +40,20 @@ const SimulationMap = ({
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   const { isLoaded, loadError } = useGoogleMaps();
-  const { tourist, moveTourist } = useSimulation();
+  const { tourist, moveTourist, formattedRiskDuration } = useSimulation();
 
-  // Get marker color based on zone type
-  const getMarkerColor = (zoneType: ZoneType | 'unknown'): string => {
-    switch (zoneType) {
-      case 'safe':
-        return ZONE_COLORS.safe.markerColor;
-      case 'caution':
-        return ZONE_COLORS.caution.markerColor;
-      case 'danger':
-        return ZONE_COLORS.danger.markerColor;
-      default:
-        return '#6b7280'; // Gray for unknown
-    }
-  };
-
-  // Create tourist marker icon
-  const createTouristIcon = useCallback((zoneType: ZoneType | 'unknown'): google.maps.Symbol => {
+  // Create tourist marker icon based on risk status
+  const createTouristIcon = useCallback((riskStatus: RiskStatus): google.maps.Symbol => {
+    const color = RISK_STATUS_COLORS[riskStatus];
+    const isAtRisk = riskStatus !== 'SAFE';
+    
     return {
       path: google.maps.SymbolPath.CIRCLE,
-      fillColor: getMarkerColor(zoneType),
+      fillColor: color,
       fillOpacity: 1,
       strokeColor: '#ffffff',
-      strokeWeight: 3,
-      scale: 14,
+      strokeWeight: isAtRisk ? 4 : 3,
+      scale: isAtRisk ? 16 : 14,
     };
   }, []);
 
@@ -109,7 +109,10 @@ const SimulationMap = ({
                 background: ${zone.type === 'safe' ? '#dcfce7' : zone.type === 'caution' ? '#fef9c3' : '#fee2e2'};
                 color: ${zone.type === 'safe' ? '#166534' : zone.type === 'caution' ? '#854d0e' : '#991b1b'};
               ">${zone.type.toUpperCase()}</span>
-              ${zone.description ? `<p style="margin: 8px 0 0; font-size: 12px; color: #64748b;">${zone.description}</p>` : ''}
+              <p style="margin: 8px 0 4px; font-size: 11px; color: #94a3b8;">
+                Proximity buffer: ${PROXIMITY_BUFFER_METERS}m
+              </p>
+              ${zone.description ? `<p style="margin: 4px 0 0; font-size: 12px; color: #64748b;">${zone.description}</p>` : ''}
             </div>
           `;
           infoWindowRef.current.setContent(content);
@@ -125,7 +128,7 @@ const SimulationMap = ({
     touristMarkerRef.current = new google.maps.Marker({
       position: tourist.position,
       map: mapInstanceRef.current,
-      icon: createTouristIcon(tourist.currentZone),
+      icon: createTouristIcon(tourist.riskStatus),
       title: 'Simulated Tourist',
       animation: google.maps.Animation.DROP,
       zIndex: 1000,
@@ -154,13 +157,13 @@ const SimulationMap = ({
     };
   }, [isLoaded, allowClickToMove, moveTourist, onMapClick, createTouristIcon]);
 
-  // Update tourist marker when position/zone changes
+  // Update tourist marker when position/risk status changes
   useEffect(() => {
     if (touristMarkerRef.current && isLoaded) {
       touristMarkerRef.current.setPosition(tourist.position);
-      touristMarkerRef.current.setIcon(createTouristIcon(tourist.currentZone));
+      touristMarkerRef.current.setIcon(createTouristIcon(tourist.riskStatus));
     }
-  }, [tourist.position, tourist.currentZone, isLoaded, createTouristIcon]);
+  }, [tourist.position, tourist.riskStatus, isLoaded, createTouristIcon]);
 
   // Loading state
   if (!isLoaded) {
@@ -218,6 +221,9 @@ const SimulationMap = ({
     );
   }
 
+  const isAtRisk = tourist.riskStatus !== 'SAFE';
+  const statusColor = RISK_STATUS_COLORS[tourist.riskStatus];
+
   return (
     <Card className={className}>
       {showTitle && (
@@ -225,9 +231,18 @@ const SimulationMap = ({
           <CardTitle className="flex items-center gap-2">
             <Map size={20} />
             Safety Zone Map - Bangalore
+            {isAtRisk && (
+              <Badge 
+                variant="destructive" 
+                className="ml-2 animate-pulse"
+                style={{ backgroundColor: statusColor }}
+              >
+                {getRiskStatusLabel(tourist.riskStatus)}
+              </Badge>
+            )}
           </CardTitle>
           <CardDescription>
-            Live tourist tracking with geofenced safety zones.
+            Live tourist tracking with geofenced safety zones and proximity detection.
             {allowClickToMove && ' Click anywhere to move the tourist.'}
           </CardDescription>
         </CardHeader>
@@ -265,28 +280,40 @@ const SimulationMap = ({
             <span>Danger</span>
           </div>
           <span className="text-muted-foreground">|</span>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-foreground border-2 border-white shadow" />
-            <span>Tourist</span>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            Proximity: {PROXIMITY_BUFFER_METERS}m buffer
+          </span>
         </div>
 
         {/* Current Status */}
-        <div className={`flex items-center gap-3 p-3 rounded-lg text-sm ${
-          tourist.currentZone === 'safe' ? 'bg-status-safe-bg' :
-          tourist.currentZone === 'caution' ? 'bg-status-observation-bg' :
-          tourist.currentZone === 'danger' ? 'bg-status-alert-bg' :
-          'bg-muted'
-        }`}>
-          <span
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: getMarkerColor(tourist.currentZone) }}
-          />
-          <span className="font-medium">
-            Tourist Status: {tourist.currentZone.toUpperCase()}
-          </span>
-          {tourist.zoneName && (
-            <span className="text-muted-foreground">• {tourist.zoneName}</span>
+        <div 
+          className={`flex items-center justify-between p-3 rounded-lg text-sm border-2 ${isAtRisk ? 'animate-pulse' : ''}`}
+          style={{ 
+            backgroundColor: `${statusColor}15`,
+            borderColor: `${statusColor}50`
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <span
+              className="w-4 h-4 rounded-full border-2 border-white shadow-md"
+              style={{ backgroundColor: statusColor }}
+            />
+            <span className="font-medium">
+              Risk Status: {getRiskStatusLabel(tourist.riskStatus)}
+            </span>
+            {tourist.zoneName && (
+              <span className="text-muted-foreground">• {tourist.zoneName}</span>
+            )}
+            {tourist.nearestRiskZone && tourist.distanceToRisk !== null && tourist.distanceToRisk > 0 && (
+              <span className="text-muted-foreground text-xs">
+                • {Math.round(tourist.distanceToRisk)}m from {tourist.nearestRiskZone}
+              </span>
+            )}
+          </div>
+          {isAtRisk && (
+            <Badge variant="outline" className="font-mono">
+              {formattedRiskDuration}
+            </Badge>
           )}
         </div>
       </CardContent>
