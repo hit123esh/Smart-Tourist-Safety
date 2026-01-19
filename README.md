@@ -1,8 +1,3 @@
-# Smart Tourism Safety System
-
-## ⚠️ Authentication Notice
-
-**This project uses a simplified authentication flow for development purposes.**
 
 ### Current Authentication:
 - **Tourist Sign-up/Sign-in**: Email-only lookup (no password required for tourists)
