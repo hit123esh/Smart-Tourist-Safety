@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LogOut, Users, Search, Filter, RefreshCw, Shield, ChevronDown, Loader2, MapPin, Bell } from 'lucide-react';
+import { LogOut, Users, Search, Filter, RefreshCw, Shield, ChevronDown, Loader2, MapPin, Bell, Brain } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,8 @@ import AdminControlPanel from '@/components/AdminControlPanel';
 import AlertsPanel from '@/components/AlertsPanel';
 import ZoneTrackingTable from '@/components/ZoneTrackingTable';
 import { EventLogPanel } from '@/components/EventLogPanel';
+import MLAlertsPanel from '@/components/MLAlertsPanel';
+import { useIncidentAlerts } from '@/hooks/useIncidentAlerts';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSimulation } from '@/contexts/SimulationContext';
 import { supabase } from '@/services/supabaseClient';
@@ -44,6 +46,7 @@ const PoliceDashboard = () => {
   const navigate = useNavigate();
   const { signOut, loading: authLoading } = useAuth();
   const { tourist: simulatedTourist, alerts, activePanicAlert } = useSimulation();
+  const { stats: mlStats, hasCritical: hasMlCritical } = useIncidentAlerts();
   const [tourists, setTourists] = useState<Tourist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,9 +82,9 @@ const PoliceDashboard = () => {
       tourist.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tourist.tourist_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tourist.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || tourist.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -133,6 +136,12 @@ const PoliceDashboard = () => {
                   {unacknowledgedAlerts} Alert{unacknowledgedAlerts > 1 ? 's' : ''}
                 </span>
               )}
+              {hasMlCritical && (
+                <span className="flex items-center gap-1 px-2 py-1 bg-red-700 text-white rounded-full text-xs font-bold animate-pulse">
+                  <Brain size={12} />
+                  ML: {mlStats.critical} CRITICAL
+                </span>
+              )}
             </div>
             <Button
               variant="secondary"
@@ -160,12 +169,11 @@ const PoliceDashboard = () => {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-                simulatedTourist.currentZone === 'safe' ? 'bg-status-safe-bg text-status-safe' :
-                simulatedTourist.currentZone === 'caution' ? 'bg-status-observation-bg text-status-observation' :
-                simulatedTourist.currentZone === 'danger' ? 'bg-status-alert-bg text-status-alert' :
-                'bg-muted text-muted-foreground'
-              }`}>
+              <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${simulatedTourist.currentZone === 'safe' ? 'bg-status-safe-bg text-status-safe' :
+                  simulatedTourist.currentZone === 'caution' ? 'bg-status-observation-bg text-status-observation' :
+                    simulatedTourist.currentZone === 'danger' ? 'bg-status-alert-bg text-status-alert' :
+                      'bg-muted text-muted-foreground'
+                }`}>
                 <MapPin size={14} />
                 Tourist: {simulatedTourist.currentZone.toUpperCase()}
               </span>
@@ -174,10 +182,19 @@ const PoliceDashboard = () => {
 
           {/* Tabs for different views */}
           <Tabs defaultValue="simulation" className="space-y-6">
-            <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsList className="grid w-full max-w-lg grid-cols-3">
               <TabsTrigger value="simulation" className="gap-2">
                 <MapPin size={16} />
                 Live Simulation
+              </TabsTrigger>
+              <TabsTrigger value="ml-alerts" className="gap-1 relative">
+                <Brain size={16} />
+                ML Alerts
+                {mlStats.unresolved > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
+                    {mlStats.unresolved > 9 ? '9+' : mlStats.unresolved}
+                  </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="registry" className="gap-2">
                 <Users size={16} />
@@ -269,6 +286,68 @@ const PoliceDashboard = () => {
               <EventLogPanel />
             </TabsContent>
 
+            {/* ML Alerts Tab */}
+            <TabsContent value="ml-alerts" className="space-y-6">
+              {/* Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 animate-slide-up">
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                        <Brain className="text-red-500" size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total Active</p>
+                        <p className="text-2xl font-bold">{mlStats.unresolved}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-red-600/10 flex items-center justify-center">
+                        <Shield className="text-red-600" size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Critical</p>
+                        <p className="text-2xl font-bold text-red-600">{mlStats.critical}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                        <Shield className="text-orange-500" size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">High</p>
+                        <p className="text-2xl font-bold text-orange-500">{mlStats.high}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                        <Shield className="text-yellow-500" size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Medium</p>
+                        <p className="text-2xl font-bold text-yellow-500">{mlStats.medium}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* ML Alerts Panel */}
+              <MLAlertsPanel />
+            </TabsContent>
+
             {/* Registry Tab */}
             <TabsContent value="registry" className="space-y-6">
               {/* Stats Cards */}
@@ -286,7 +365,7 @@ const PoliceDashboard = () => {
                     </div>
                   </CardContent>
                 </Card>
-                
+
                 <Card>
                   <CardContent className="p-5">
                     <div className="flex items-center gap-4">
@@ -403,7 +482,7 @@ const PoliceDashboard = () => {
                             {filteredTourists.length === 0 ? (
                               <TableRow>
                                 <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                                  {tourists.length === 0 
+                                  {tourists.length === 0
                                     ? 'No tourists registered yet.'
                                     : 'No tourists found matching your criteria.'}
                                 </TableCell>

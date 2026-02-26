@@ -2,7 +2,7 @@
 // Google Maps Configuration
 // API key is publishable (browser security via domain restrictions in Google Cloud Console)
 
-export const GOOGLE_MAPS_API_KEY = 'AIzaSyDzLgrmy5qvwBdIBcpMT9wzzolAxFGyAvo';
+export const GOOGLE_MAPS_API_KEY = 'AIzaSyB-WXYTuTT6-KndXkOSO52q0VHHXtpQPz0';
 
 // Bangalore, India - Default Map Center
 export const DEFAULT_MAP_CENTER = {

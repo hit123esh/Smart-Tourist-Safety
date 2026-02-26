@@ -1,0 +1,16 @@
+# Backend — Tourist Safety Anomaly Detection Service
+# Compatible with Python 3.9+
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+apscheduler==3.10.4
+supabase==2.4.2
+scikit-learn==1.6.1
+numpy==1.26.4
+pandas==2.0.3
+joblib==1.4.2
+python-dotenv==1.0.1
+pydantic-settings==2.7.1
+structlog==24.4.0
+pytest==8.3.4
+pytest-asyncio==0.25.3
