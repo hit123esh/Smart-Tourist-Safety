@@ -1,37 +1,11 @@
 
 ### Current Authentication:
-- **Tourist Sign-up/Sign-in**: Email-only lookup (no password required for tourists)
+- **Tourist Sign-up/Sign-in**: Email-only lookup
 - **Police Portal**: Uses Supabase Auth with password authentication
-
-### What this means:
-- Tourist authentication checks if the email exists in the `tourists` table
-- No email verification is performed
-- Session state is managed client-side for tourists
-- This is **NOT production-grade authentication**
-
-### To enable proper authentication later:
-1. Re-enable Supabase Auth email/password for tourists
-2. Add email verification flow
-3. Implement proper session management with JWTs
-4. Add password reset functionality
 
 ---
 
-## Project info
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
 
 If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
 
